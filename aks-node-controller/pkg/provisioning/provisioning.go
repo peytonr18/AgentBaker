@@ -58,6 +58,11 @@ type Options struct {
 	DocumentationURL string
 	// SupportingData is appended to the report as ordered key/value extras.
 	SupportingData [][2]string
+	// DisableKVP disables writing the provisioning report and dmesg to the Hyper-V KVP pool.
+	// KVP writes are best-effort diagnostics and never block or fail the wireserver report.
+	DisableKVP bool
+	// KVPPath overrides the KVP pool file path. Empty uses the default guest pool file.
+	KVPPath string
 	// Client overrides the wireserver client, primarily for tests. When nil a default client is
 	// built from Endpoint/Agent/TotalRetryTimeout.
 	Client *Client
@@ -90,6 +95,18 @@ func (o Options) vmID() string {
 	return getVMID(o.vmIDPath)
 }
 
+// writeKVP writes the encoded report (and dmesg diagnostics) to the Hyper-V KVP pool file. It is
+// best-effort: any failure is logged and swallowed so KVP problems never block the wireserver
+// health report. Matches azure-init's kvp_diagnostics, which is enabled by default.
+func (o Options) writeKVP(report string) {
+	if o.DisableKVP {
+		return
+	}
+	if err := NewKVPWriter(o.KVPPath).WriteProvisioningReport(report); err != nil {
+		slog.Warn("failed to write provisioning report to KVP (continuing)", "error", err)
+	}
+}
+
 // ReportReady reports provisioning success ("Ready") to the wireserver. It POSTs
 // {"state":"Ready"} and returns an error only if the report cannot be delivered within the
 // retry budget.
@@ -97,13 +114,15 @@ func ReportReady(ctx context.Context, opts Options) error {
 	c := opts.client()
 	vmID := opts.vmID()
 
-	// Build the encoded success report for logging and forward-compatibility with KVP
-	// persistence. It is not part of the Ready HTTP body, matching azure-init.
+	// The encoded success report is written to the Hyper-V KVP pool (diagnostics); it is not
+	// part of the Ready HTTP body, matching azure-init.
 	report := NewSuccessReport(opts.agent(), vmID, PpsTypeNone)
 	for _, kv := range opts.SupportingData {
 		report.WithExtra(kv[0], kv[1])
 	}
-	slog.Info("reporting provisioning ready", "vm_id", vmID, "endpoint", c.Endpoint, "report", report.Encode())
+	encoded := report.Encode()
+	slog.Info("reporting provisioning ready", "vm_id", vmID, "endpoint", c.Endpoint, "report", encoded)
+	opts.writeKVP(encoded)
 
 	return c.postHealth(ctx, stateReady, "", "")
 }
@@ -127,6 +146,7 @@ func ReportFailure(ctx context.Context, opts Options, reason string) error {
 	report.WithDocumentationURL(docURL)
 	encoded := report.Encode()
 	slog.Info("reporting provisioning failure", "vm_id", vmID, "endpoint", c.Endpoint, "reason", reason, "report", encoded)
+	opts.writeKVP(encoded)
 
 	return c.postHealth(ctx, stateNotReady, subStatusProvisioningFailed, encoded)
 }

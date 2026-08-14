@@ -17,6 +17,8 @@ type ReportFlags struct {
 	Endpoint          string
 	Agent             string
 	TotalRetryTimeout time.Duration
+	DisableKVP        bool
+	KVPPath           string
 
 	// Failure-only fields.
 	Reason           string
@@ -29,8 +31,32 @@ func (f ReportFlags) toOptions() provisioning.Options {
 		Endpoint:          f.Endpoint,
 		Agent:             f.Agent,
 		TotalRetryTimeout: f.TotalRetryTimeout,
+		DisableKVP:        f.DisableKVP,
+		KVPPath:           f.KVPPath,
 		DocumentationURL:  f.DocumentationURL,
 		SupportingData:    f.SupportingData,
+	}
+}
+
+// commonReportFlags are the flags shared by report-ready and report-failure.
+func commonReportFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: "endpoint", Usage: "wireserver provisioning-health endpoint", Value: provisioning.DefaultHealthEndpoint},
+		&cli.StringFlag{Name: "agent", Usage: "reporting agent identifier", Value: provisioning.AgentName},
+		&cli.DurationFlag{Name: "total-retry-timeout", Usage: "total retry budget for delivering the report", Value: provisioning.DefaultTotalRetryTimeout},
+		&cli.BoolFlag{Name: "disable-kvp", Usage: "do not write the report and dmesg to the Hyper-V KVP pool"},
+		&cli.StringFlag{Name: "kvp-path", Usage: "override the Hyper-V KVP pool file path"},
+	}
+}
+
+// readCommonReportFlags reads the shared flags into a ReportFlags.
+func readCommonReportFlags(cmd *cli.Command) ReportFlags {
+	return ReportFlags{
+		Endpoint:          cmd.String("endpoint"),
+		Agent:             cmd.String("agent"),
+		TotalRetryTimeout: cmd.Duration("total-retry-timeout"),
+		DisableKVP:        cmd.Bool("disable-kvp"),
+		KVPPath:           cmd.String("kvp-path"),
 	}
 }
 
@@ -39,17 +65,9 @@ func (a *App) reportReadyCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "report-ready",
 		Usage: "Report provisioning success (Ready) to the Azure wireserver",
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "endpoint", Usage: "wireserver provisioning-health endpoint", Value: provisioning.DefaultHealthEndpoint},
-			&cli.StringFlag{Name: "agent", Usage: "reporting agent identifier", Value: provisioning.AgentName},
-			&cli.DurationFlag{Name: "total-retry-timeout", Usage: "total retry budget for delivering the report", Value: provisioning.DefaultTotalRetryTimeout},
-		},
+		Flags: commonReportFlags(),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return a.runReportReadyCommand(ctx, ReportFlags{
-				Endpoint:          cmd.String("endpoint"),
-				Agent:             cmd.String("agent"),
-				TotalRetryTimeout: cmd.Duration("total-retry-timeout"),
-			})
+			return a.runReportReadyCommand(ctx, readCommonReportFlags(cmd))
 		},
 	}
 }
@@ -59,27 +77,21 @@ func (a *App) reportFailureCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "report-failure",
 		Usage: "Report provisioning failure (NotReady) to the Azure wireserver",
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "endpoint", Usage: "wireserver provisioning-health endpoint", Value: provisioning.DefaultHealthEndpoint},
-			&cli.StringFlag{Name: "agent", Usage: "reporting agent identifier", Value: provisioning.AgentName},
-			&cli.DurationFlag{Name: "total-retry-timeout", Usage: "total retry budget for delivering the report", Value: provisioning.DefaultTotalRetryTimeout},
+		Flags: append(commonReportFlags(),
 			&cli.StringFlag{Name: "reason", Aliases: []string{"description"}, Usage: "human-readable failure reason"},
 			&cli.StringFlag{Name: "documentation-url", Usage: "documentation URL included in the failure report", Value: provisioning.DocumentationURL},
 			&cli.StringSliceFlag{Name: "supporting-data", Usage: "additional key=value context (repeatable)"},
-		},
+		),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			supporting, err := parseSupportingData(cmd.StringSlice("supporting-data"))
 			if err != nil {
 				return err
 			}
-			return a.runReportFailureCommand(ctx, ReportFlags{
-				Endpoint:          cmd.String("endpoint"),
-				Agent:             cmd.String("agent"),
-				TotalRetryTimeout: cmd.Duration("total-retry-timeout"),
-				Reason:            cmd.String("reason"),
-				DocumentationURL:  cmd.String("documentation-url"),
-				SupportingData:    supporting,
-			})
+			flags := readCommonReportFlags(cmd)
+			flags.Reason = cmd.String("reason")
+			flags.DocumentationURL = cmd.String("documentation-url")
+			flags.SupportingData = supporting
+			return a.runReportFailureCommand(ctx, flags)
 		},
 	}
 }

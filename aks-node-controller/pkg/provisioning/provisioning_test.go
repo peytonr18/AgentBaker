@@ -30,7 +30,7 @@ func TestReportReadyEndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := ReportReady(context.Background(), Options{Client: testClient(srv.URL), vmIDPath: writeVMIDFile(t, testVMID)})
+	err := ReportReady(context.Background(), Options{Client: testClient(srv.URL), vmIDPath: writeVMIDFile(t, testVMID), DisableKVP: true})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"state":"Ready"}`, string(gotBody))
 }
@@ -44,7 +44,7 @@ func TestReportFailureEndToEnd(t *testing.T) {
 	defer srv.Close()
 
 	err := ReportFailure(context.Background(),
-		Options{Client: testClient(srv.URL), vmIDPath: writeVMIDFile(t, testVMID)},
+		Options{Client: testClient(srv.URL), vmIDPath: writeVMIDFile(t, testVMID), DisableKVP: true},
 		"cse failed with exit code 42")
 	require.NoError(t, err)
 
@@ -76,6 +76,7 @@ func TestReportFailureSupportingData(t *testing.T) {
 			Client:         testClient(srv.URL),
 			vmIDPath:       writeVMIDFile(t, testVMID),
 			SupportingData: [][2]string{{"exit_code", "42"}},
+			DisableKVP:     true,
 		},
 		"cse failed")
 	require.NoError(t, err)
@@ -109,4 +110,31 @@ func TestGetVMIDFallsBackToZero(t *testing.T) {
 	lookupVMIDFromDMIDecode = func() (string, error) { return "", fmt.Errorf("dmidecode unavailable") }
 
 	assert.Equal(t, zeroVMID, getVMID(filepath.Join(t.TempDir(), "missing")))
+}
+
+func TestReportReadyWritesKVP(t *testing.T) {
+	origDmesg := lookupDmesg
+	t.Cleanup(func() { lookupDmesg = origDmesg })
+	lookupDmesg = func() ([]byte, error) { return []byte("boot log"), nil }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	kvpPath := filepath.Join(t.TempDir(), ".kvp_pool_1")
+	err := ReportReady(context.Background(), Options{
+		Client:   testClient(srv.URL),
+		vmIDPath: writeVMIDFile(t, testVMID),
+		KVPPath:  kvpPath,
+	})
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(kvpPath)
+	require.NoError(t, err)
+	require.Positive(t, len(data))
+	// The report and dmesg diagnostics must both be present in the pool file.
+	assert.Contains(t, string(data), kvpProvisioningReportKey)
+	assert.Contains(t, string(data), "result=success")
+	assert.Contains(t, string(data), "boot log")
 }

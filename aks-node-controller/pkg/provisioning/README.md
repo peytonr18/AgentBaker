@@ -55,11 +55,27 @@ The `vm_id` field is read from `/sys/class/dmi/id/product_uuid`, falling back to
 `dmidecode -s system-uuid`, then to the all-zero UUID. It requires no privileges and works
 pre-network.
 
+### KVP diagnostics
+
+Alongside the wireserver report, the encoded report is written to the Hyper-V guest KVP pool file
+(`/var/lib/hyperv/.kvp_pool_1`) under the `PROVISIONING_REPORT` key, together with a `dmesg`
+snapshot, so the Azure/Hyper-V host can read provisioning telemetry. This mirrors azure-init's KVP
+path (`libazureinit/src/kvp.rs`):
+
+- Records use the fixed-width 512-byte key + 2048-byte value format (zero-padded UTF-8); values
+  longer than 1022 bytes are split across multiple same-key records.
+- Records are appended under an exclusive `flock`, and the pool file is truncated once per boot if
+  it holds stale data from a previous boot (`mtime` predates boot time).
+- KVP writes are **best-effort**: any failure is logged and never blocks or fails the wireserver
+  report. Disable them with `--disable-kvp`.
+
 ## CLI usage
 
 ```text
-aks-node-controller report-ready   [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR]
+aks-node-controller report-ready   [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] \
+                                   [--disable-kvp] [--kvp-path PATH]
 aks-node-controller report-failure [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] \
+                                   [--disable-kvp] [--kvp-path PATH] \
                                    [--reason TEXT] [--documentation-url URL] \
                                    [--supporting-data key=value ...]
 ```
@@ -69,6 +85,8 @@ aks-node-controller report-failure [--endpoint URL] [--agent NAME] [--total-retr
 | `--endpoint` | `http://168.63.129.16/provisioning/health` | Wireserver provisioning-health endpoint. |
 | `--agent` | `AKS-CSE` | Reporting agent identifier (report `agent=` field and request headers). |
 | `--total-retry-timeout` | `20m` | Total budget for delivering the report. |
+| `--disable-kvp` | `false` | Do not write the report and `dmesg` to the Hyper-V KVP pool. |
+| `--kvp-path` | `/var/lib/hyperv/.kvp_pool_1` | Override the Hyper-V KVP pool file path. |
 | `--reason` / `--description` | `""` | Human-readable failure reason (report-failure only). |
 | `--documentation-url` | `https://aka.ms/linuxprovisioningerror` | Documentation URL in the failure report. |
 | `--supporting-data` | — | Extra `key=value` context, repeatable (report-failure only). |
@@ -112,6 +130,6 @@ runcmd:
 
 ## Scope
 
-This package covers the wireserver health report only. Hyper-V KVP persistence of the encoded
-report (`PROVISIONING_REPORT`) and `dmesg` diagnostics — azure-init's KVP path — are a planned
-follow-up, as is honoring the `experimental_skip_ready_report` marker.
+This package reports provisioning health to the wireserver and writes the encoded report plus a
+`dmesg` snapshot to the Hyper-V KVP pool. Honoring the `experimental_skip_ready_report` marker
+(so the CLI can stand in for cloud-init's own ready report) is a planned follow-up.
