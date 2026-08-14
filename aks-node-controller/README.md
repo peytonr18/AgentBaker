@@ -149,3 +149,13 @@ Key components:
         ```
         This indicates the controller exited before emitting `provision.json`. Most commonly the rendered AKSNodeConfig was missing, had the wrong `Version` (expected `v1`), or was written to the wrong path (`/opt/azure/containers/aks-node-controller-config.json`). Fix the config generation, redeploy, and the bootstrap scripts will then populate `provision.json`.
 - **provision-wait**: waits for `provision.complete` to be present and reads `provision.json` which contains the provision output of type `CSEStatus` and is returned by CSE through capturing stdout.
+
+### Health reporting
+
+The binary can also report node provisioning health to the Azure wireserver, independently of the provisioning flow:
+
+- **report-ready**: reports provisioning success (`Ready`) to the wireserver.
+- **report-failure**: reports provisioning failure (`NotReady` / `ProvisioningFailed`) to the wireserver.
+
+These are useful when an image needs to signal its own health (for example, invoked from cloud-init `runcmd`). See [pkg/provisioning](pkg/provisioning/README.md) for the protocol, flags, and examples.
+
