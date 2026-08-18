@@ -152,10 +152,5 @@ Key components:
 
 ### Health reporting
 
-The binary can also report node provisioning health to the Azure wireserver, independently of the provisioning flow:
-
-- **report-ready**: reports provisioning success (`Ready`) to the wireserver.
-- **report-failure**: reports provisioning failure (`NotReady` / `ProvisioningFailed`) to the wireserver.
-
-These are useful when an image needs to signal its own health (for example, invoked from cloud-init `runcmd`). See [pkg/provisioning](pkg/provisioning/README.md) for the protocol, flags, and examples.
+Provisioning-health reporting (reporting `Ready` / `NotReady` to the Azure fabric and writing KVP diagnostics) is provided as a **standalone tool**, not run automatically by the controller. The [pkg/provisioning](pkg/provisioning/README.md) package implements it, and the `provisioning-report` CLI ships on the VHD at `/opt/azure/containers/provisioning-report`. See [pkg/provisioning/README.md](pkg/provisioning/README.md) for the protocol and CLI, and [pkg/provisioning/reporting-rollout.md](pkg/provisioning/reporting-rollout.md) for how the controller could invoke it automatically in the future.
 

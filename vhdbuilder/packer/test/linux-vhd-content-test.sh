@@ -2053,6 +2053,44 @@ testAKSNodeControllerVersion() {
   echo "$test: aks-node-controller version '${ancVersion}' is valid"
 }
 
+testProvisioningReportBinary () {
+  local test="testProvisioningReportBinary"
+  local go_binary_path="/opt/azure/containers/provisioning-report"
+
+  echo "$test: checking existence of provisioning-report go binary at $go_binary_path"
+  if [ ! -f "$go_binary_path" ]; then
+    err "$test: provisioning-report go binary does not exist at $go_binary_path"
+    return 1
+  fi
+  echo "$test: provisioning-report go binary exists at $go_binary_path"
+}
+
+testProvisioningReportVersion() {
+  local test="testProvisioningReportVersion"
+  local go_binary_path="/opt/azure/containers/provisioning-report"
+  local prVersionRaw
+  local prVersion
+
+  prVersionRaw=$("${go_binary_path}" --version 2>&1)
+  if [ "$?" -ne 0 ]; then
+    err "$test" "failed to run '${go_binary_path} --version': ${prVersionRaw}"
+    return 1
+  fi
+
+  prVersion=$(printf '%s' "$prVersionRaw" | tr -d '\r\n' | awk '{print $NF}')
+  if [ -z "$prVersion" ]; then
+    err "$test" "provisioning-report version is empty"
+    return 1
+  fi
+
+  if ! printf '%s\n' "$prVersion" | grep -Eq '^[0-9]{6}\.[0-9]{2}\.[0-9]+$'; then
+    err "$test" "provisioning-report version format is invalid: '${prVersion}'. expected 'YYYYMM.DD.PATCH'"
+    return 1
+  fi
+
+  echo "$test: provisioning-report version '${prVersion}' is valid"
+}
+
 testAKSNodeControllerService() {
   local test="testNBCParserService"
   local service_name="aks-node-controller.service"
@@ -2707,6 +2745,8 @@ testNodeExporter $OS_SKU
 testAKSNodeControllerBinary
 testAKSNodeControllerVersion
 testAKSNodeControllerService
+testProvisioningReportBinary
+testProvisioningReportVersion
 testLtsKernel $OS_VERSION $OS_SKU $ENABLE_FIPS
 testAutologinDisabled $OS_SKU
 testCorednsBinaryExtractedAndCached $OS_VERSION

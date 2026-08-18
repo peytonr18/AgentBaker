@@ -172,8 +172,6 @@ func (a *App) Run(ctx context.Context, args []string) int {
 					return a.runCheckHotfixCommand(ctx)
 				},
 			},
-			a.reportReadyCommand(),
-			a.reportFailureCommand(),
 		},
 	}
 

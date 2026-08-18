@@ -104,6 +104,11 @@
     },
     {
       "type": "file",
+      "source": "aks-node-controller/bin/provisioning-report-linux-amd64",
+      "destination": "/home/packer/provisioning-report"
+    },
+    {
+      "type": "file",
       "source": "parts/linux/cloud-init/artifacts/cloud-init-status-check.sh",
       "destination": "/home/packer/cloud-init-status-check.sh"
     },

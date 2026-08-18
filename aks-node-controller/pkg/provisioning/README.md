@@ -5,9 +5,15 @@ port of [azure-init](https://github.com/Azure/azure-init)'s health reporting
 (`libazureinit/src/health.rs`, `report.rs`, `error.rs`) and replaces the earlier Python
 `cloud_init_report_ready.py` workaround.
 
-The `aks-node-controller` binary exposes it as two subcommands — `report-ready` and
-`report-failure` — that can be invoked independently of the normal provisioning flow (for
-example, baked into an image's `runcmd`).
+The package exposes a Go API (`ReportReady` / `ReportFailure`) and ships a CLI on the VHD:
+
+- **`provisioning-report`** ([cmd/provisioning-report](../../cmd/provisioning-report)) is a thin
+  standalone CLI over the API. It ships on the VHD at `/opt/azure/containers/provisioning-report`
+  and can be invoked from a boothook / `runcmd` or manually to report `Ready` on success or
+  `NotReady` / `ProvisioningFailed` on failure.
+- **Go API** — `provisioning.ReportReady` / `ReportFailure`, for any in-process Go caller (for
+  example, if `aks-node-controller` is later wired to report automatically; see
+  [reporting-rollout.md](reporting-rollout.md)).
 
 ## Protocol
 
@@ -72,10 +78,8 @@ path (`libazureinit/src/kvp.rs`):
 ## CLI usage
 
 ```text
-aks-node-controller report-ready   [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] \
-                                   [--disable-kvp] [--kvp-path PATH]
-aks-node-controller report-failure [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] \
-                                   [--disable-kvp] [--kvp-path PATH] \
+provisioning-report report-ready   [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] [--disable-kvp] [--kvp-path PATH]
+provisioning-report report-failure [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] [--disable-kvp] [--kvp-path PATH] \
                                    [--reason TEXT] [--documentation-url URL] \
                                    [--supporting-data key=value ...]
 ```
@@ -99,37 +103,36 @@ within the retry budget (or an argument was invalid). Successfully reporting a *
 
 ### Examples
 
-Report success / failure directly:
+```bash
+provisioning-report report-ready
+provisioning-report report-failure --reason "CSE failed with exit code 42" --supporting-data exit_code=42
+```
+
+## How reporting runs
+
+**On a node (`provisioning-report`).** The CLI ships on the VHD at
+`/opt/azure/containers/provisioning-report` and is invoked to report `Ready` / `Failure` — for
+example from a cloud-init boothook / `runcmd`, or manually.
+
+**Testing (`provisioning-report` + mock wireserver).** Point the CLI at a mock endpoint to verify
+reporting without touching the real fabric:
 
 ```bash
-aks-node-controller report-ready
-aks-node-controller report-failure --reason "CSE failed with exit code 42" --supporting-data exit_code=42
+# terminal 1: a mock wireserver that records what it receives
+go run ./cmd/mockwireserver --addr 127.0.0.1:8899
+
+# terminal 2: drive the CLI at it
+provisioning-report report-ready --endpoint http://127.0.0.1:8899/provisioning/health
 ```
 
-## Baking into an image (runcmd)
-
-The commands can be invoked from cloud-init `runcmd`, so an image can report its own health
-without any custom data. Assuming the binary is installed at
-`/opt/azure/containers/aks-node-controller` (its standard VHD location):
-
-Report success:
-
-```yaml
-#cloud-config
-runcmd:
-  - /opt/azure/containers/aks-node-controller report-ready
-```
-
-Report failure:
-
-```yaml
-#cloud-config
-runcmd:
-  - /opt/azure/containers/aks-node-controller report-failure --reason "provisioning failed in runcmd"
-```
+For automated tests, `provisioningtest.NewMockWireserver()` provides an in-process recording
+wireserver; the package's integration tests assert both the HTTP report and the KVP records.
 
 ## Scope
 
 This package reports provisioning health to the wireserver and writes the encoded report plus a
-`dmesg` snapshot to the Hyper-V KVP pool. Honoring the `experimental_skip_ready_report` marker
-(so the CLI can stand in for cloud-init's own ready report) is a planned follow-up.
+`dmesg` snapshot to the Hyper-V KVP pool. It does **not** decide *when* or *whether* to report —
+that is the caller's responsibility (the `provisioning-report` CLI invoked from a boothook /
+`runcmd`, or a future automatic integration in `aks-node-controller`). Coordinating this with
+cloud-init's own ready report — so a node is not reported ready twice or prematurely — is described
+in [reporting-rollout.md](reporting-rollout.md).

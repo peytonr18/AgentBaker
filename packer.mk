@@ -6,7 +6,7 @@ ifeq (${ARCHITECTURE},ARM64)
 endif
 GOHOSTARCH = $(shell go env GOHOSTARCH)
 
-build-packer: setup-golang generate-prefetch-scripts build-image-fetcher build-aks-node-controller build-lister-binary
+build-packer: setup-golang generate-prefetch-scripts build-image-fetcher build-aks-node-controller build-provisioning-report build-lister-binary
 ifeq (${ARCHITECTURE},ARM64)
 	@echo "${MODE}: Building with Hyper-v generation 2 ARM64 VM"
 ifeq (${OS_SKU},Ubuntu)
@@ -82,7 +82,7 @@ endif
 	@packer build -timestamp-ui -var-file=vhdbuilder/packer/settings.json vhdbuilder/packer/windows/windows-vhd-builder-sig.json
 endif
 
-build-imagecustomizer: setup-golang generate-prefetch-scripts build-image-fetcher build-aks-node-controller build-lister-binary
+build-imagecustomizer: setup-golang generate-prefetch-scripts build-image-fetcher build-aks-node-controller build-provisioning-report build-lister-binary
 	@./vhdbuilder/packer/imagecustomizer/scripts/build-imagecustomizer-image.sh
 
 az-login:
@@ -143,6 +143,16 @@ build-aks-node-controller:
 	echo "Stamping ANC version: $${ANC_VERSION}"; \
 	GOEXPERIMENT=ms_nocgo_opensslcrypto CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$${ANC_LDFLAGS}" -o bin/aks-node-controller-linux-amd64; \
 	GOEXPERIMENT=ms_nocgo_opensslcrypto CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$${ANC_LDFLAGS}" -o bin/aks-node-controller-linux-arm64'
+
+build-provisioning-report:
+	@echo "Building provisioning-report binaries"
+	@bash -c 'set -euo pipefail; \
+	cd aks-node-controller; \
+	PR_VERSION="$${IMAGE_VERSION:-$$(date +%Y%m.%d.0)}"; \
+	PR_LDFLAGS="-X main.Version=$${PR_VERSION}"; \
+	echo "Stamping provisioning-report version: $${PR_VERSION}"; \
+	GOEXPERIMENT=ms_nocgo_opensslcrypto CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$${PR_LDFLAGS}" -o bin/provisioning-report-linux-amd64 ./cmd/provisioning-report; \
+	GOEXPERIMENT=ms_nocgo_opensslcrypto CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$${PR_LDFLAGS}" -o bin/provisioning-report-linux-arm64 ./cmd/provisioning-report'
 
 build-image-fetcher:
 	@echo "Building image-fetcher binaries"

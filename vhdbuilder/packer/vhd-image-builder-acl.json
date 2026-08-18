@@ -99,6 +99,11 @@
     },
     {
       "type": "file",
+      "source": "aks-node-controller/bin/provisioning-report-linux-amd64",
+      "destination": "/home/packer/provisioning-report"
+    },
+    {
+      "type": "file",
       "source": "parts/linux/cloud-init/artifacts/aks-node-controller.service",
       "destination": "/home/packer/aks-node-controller.service"
     },
