@@ -67,6 +67,9 @@ os:
     - source: /AgentBaker/aks-node-controller/bin/aks-node-controller-linux-amd64
       destination: /opt/azure/containers/aks-node-controller
       permissions: 755
+    - source: /AgentBaker/aks-node-controller/bin/provisioning-report-linux-amd64
+      destination: /opt/azure/containers/provisioning-report
+      permissions: 755
     - source: /AgentBaker/parts/linux/cloud-init/artifacts/aks-node-controller.service
       destination: /etc/systemd/system/aks-node-controller.service
       permissions: 600

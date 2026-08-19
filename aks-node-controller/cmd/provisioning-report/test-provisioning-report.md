@@ -149,7 +149,7 @@ assert the binary exists and reports a valid version.
 
 ```text
 provisioning-report report-ready   [flags]
-provisioning-report report-failure [flags] [--reason TEXT] [--documentation-url URL] [--supporting-data k=v ...]
+provisioning-report report-failure [flags] --reason TEXT [--documentation-url URL] [--supporting-data k=v ...]
 ```
 
 | Flag | Default | Description |
@@ -159,7 +159,7 @@ provisioning-report report-failure [flags] [--reason TEXT] [--documentation-url 
 | `--total-retry-timeout` | `20m` | Total budget for delivering the report. |
 | `--disable-kvp` | `false` | Do not write the report and `dmesg` to the Hyper-V KVP pool. |
 | `--kvp-path` | `/var/lib/hyperv/.kvp_pool_1` | Override the Hyper-V KVP pool file path. |
-| `--reason` / `--description` | `""` | Human-readable failure reason (`report-failure` only). |
+| `--reason` / `--description` | required | Human-readable failure reason (`report-failure` only). |
 | `--documentation-url` | `https://aka.ms/linuxprovisioningerror` | Documentation URL in the failure report. |
 | `--supporting-data` | — | Extra `key=value` context, repeatable (`report-failure` only). |
 

@@ -113,7 +113,7 @@ func reportFailureCommand() *cli.Command {
 		Name:  "report-failure",
 		Usage: "Report provisioning failure (NotReady) to the Azure wireserver",
 		Flags: append(commonReportFlags(),
-			&cli.StringFlag{Name: "reason", Aliases: []string{"description"}, Usage: "human-readable failure reason"},
+			&cli.StringFlag{Name: "reason", Aliases: []string{"description"}, Usage: "human-readable failure reason", Required: true},
 			&cli.StringFlag{Name: "documentation-url", Usage: "documentation URL included in the failure report", Value: provisioning.DocumentationURL},
 			&cli.StringSliceFlag{Name: "supporting-data", Usage: "additional key=value context (repeatable)"},
 		),

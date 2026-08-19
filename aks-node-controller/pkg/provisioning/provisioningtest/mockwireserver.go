@@ -46,9 +46,25 @@ func (h *RecordingHandler) SetResponses(statuses ...int) {
 }
 
 func (h *RecordingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.Path != "/provisioning/health" {
+		http.NotFound(w, r)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
 	var parsed healthBody
-	_ = json.Unmarshal(body, &parsed)
+	if err := json.Unmarshal(body, &parsed); err != nil || parsed.State == "" {
+		http.Error(w, "invalid health report", http.StatusBadRequest)
+		return
+	}
 	report := Report{State: parsed.State}
 	if parsed.Details != nil {
 		report.SubStatus = parsed.Details.SubStatus

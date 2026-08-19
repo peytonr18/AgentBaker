@@ -65,13 +65,19 @@ pre-network.
 
 Alongside the wireserver report, the encoded report is written to the Hyper-V guest KVP pool file
 (`/var/lib/hyperv/.kvp_pool_1`) under the `PROVISIONING_REPORT` key, together with a `dmesg`
-snapshot, so the Azure/Hyper-V host can read provisioning telemetry. This mirrors azure-init's KVP
-path (`libazureinit/src/kvp.rs`):
+snapshot, so the Azure/Hyper-V host can read provisioning telemetry. It uses azure-init's KVP
+record format with host-readable, upsert-based values:
 
-- Records use the fixed-width 512-byte key + 2048-byte value format (zero-padded UTF-8); values
-  longer than 1022 bytes are split across multiple same-key records.
-- Records are appended under an exclusive `flock`, and the pool file is truncated once per boot if
-  it holds stale data from a previous boot (`mtime` predates boot time).
+- Records use the fixed-width 512-byte key + 2048-byte value format (zero-padded UTF-8), with a
+  host-readable value limit of 1022 bytes per record. A report that fits is written verbatim under
+  `PROVISIONING_REPORT`; a larger report is split on UTF-8 boundaries into indexed chunk records
+  `PROVISIONING_REPORT|0`, `PROVISIONING_REPORT|1`, ..., which a reader reassembles by concatenating
+  the chunk values in index order (cloud-init's key-suffix chunk indexing, without its JSON value
+  envelope).
+- `PROVISIONING_REPORT` and `dmesg` use upsert semantics, so repeated calls leave one current value
+  for each key (replacing any prior single or chunked records) while preserving unrelated KVP records.
+- Stale checking, truncation, and rewriting happen while holding both `flock` and `fcntl` locks,
+  coordinating with cloud-init / azure-init and `hv_kvp_daemon`.
 - KVP writes are **best-effort**: any failure is logged and never blocks or fails the wireserver
   report. Disable them with `--disable-kvp`.
 
@@ -80,7 +86,7 @@ path (`libazureinit/src/kvp.rs`):
 ```text
 provisioning-report report-ready   [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] [--disable-kvp] [--kvp-path PATH]
 provisioning-report report-failure [--endpoint URL] [--agent NAME] [--total-retry-timeout DUR] [--disable-kvp] [--kvp-path PATH] \
-                                   [--reason TEXT] [--documentation-url URL] \
+                                   --reason TEXT [--documentation-url URL] \
                                    [--supporting-data key=value ...]
 ```
 
@@ -91,7 +97,7 @@ provisioning-report report-failure [--endpoint URL] [--agent NAME] [--total-retr
 | `--total-retry-timeout` | `20m` | Total budget for delivering the report. |
 | `--disable-kvp` | `false` | Do not write the report and `dmesg` to the Hyper-V KVP pool. |
 | `--kvp-path` | `/var/lib/hyperv/.kvp_pool_1` | Override the Hyper-V KVP pool file path. |
-| `--reason` / `--description` | `""` | Human-readable failure reason (report-failure only). |
+| `--reason` / `--description` | required | Human-readable failure reason (report-failure only). |
 | `--documentation-url` | `https://aka.ms/linuxprovisioningerror` | Documentation URL in the failure report. |
 | `--supporting-data` | — | Extra `key=value` context, repeatable (report-failure only). |
 

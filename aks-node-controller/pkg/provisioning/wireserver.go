@@ -109,6 +109,20 @@ const (
 	attemptFatal
 )
 
+// permanentRequestError marks configuration or request-construction failures that cannot be
+// repaired by retrying.
+type permanentRequestError struct {
+	err error
+}
+
+func (e *permanentRequestError) Error() string {
+	return e.err.Error()
+}
+
+func (e *permanentRequestError) Unwrap() error {
+	return e.err
+}
+
 // postHealth builds the JSON body and POSTs it, retrying transient failures until the total
 // retry budget is exhausted. It follows azure-init health.rs::_report semantics:
 //   - success on any 2xx.
@@ -170,7 +184,10 @@ func (c *Client) postHealth(ctx context.Context, state provisioningState, subSta
 // any 2xx succeeds, 429/500/503 and transport errors are retryable, and any other status is fatal.
 func (c *Client) postAttempt(ctx context.Context, payload []byte, timeout time.Duration) (attemptOutcome, error) {
 	statusCode, err := c.doPost(ctx, payload, timeout)
+	var permanentErr *permanentRequestError
 	switch {
+	case errors.As(err, &permanentErr):
+		return attemptFatal, err
 	case err != nil:
 		return attemptRetryable, err
 	case statusCode >= 200 && statusCode < 300:
@@ -200,6 +217,9 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 // doPost performs a single bounded POST attempt and returns the HTTP status code. A transport
 // error (connection refused, timeout, etc.) is returned as a non-nil error with a zero status.
 func (c *Client) doPost(ctx context.Context, payload []byte, timeout time.Duration) (int, error) {
+	if c.HTTPClient == nil {
+		return 0, &permanentRequestError{err: errors.New("HTTP client is nil")}
+	}
 	attemptCtx := ctx
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -208,7 +228,10 @@ func (c *Client) doPost(ctx context.Context, payload []byte, timeout time.Durati
 	}
 	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, c.Endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return 0, fmt.Errorf("building request: %w", err)
+		return 0, &permanentRequestError{err: fmt.Errorf("building request: %w", err)}
+	}
+	if !req.URL.IsAbs() || req.URL.Host == "" || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
+		return 0, &permanentRequestError{err: fmt.Errorf("invalid health endpoint %q", c.Endpoint)}
 	}
 	req.Header.Set("User-Agent", c.Agent)
 	req.Header.Set("x-ms-guest-agent-name", c.Agent)

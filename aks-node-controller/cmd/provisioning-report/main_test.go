@@ -41,6 +41,14 @@ func TestRunReportFailure(t *testing.T) {
 	assert.Contains(t, mock.Reports()[0].Description, "reason=boom")
 }
 
+func TestRunReportFailureRequiresReason(t *testing.T) {
+	err := run(context.Background(), []string{
+		"provisioning-report", "report-failure",
+		"--disable-kvp",
+	})
+	assert.ErrorContains(t, err, "Required flag")
+}
+
 func TestParseSupportingData(t *testing.T) {
 	got, err := parseSupportingData([]string{"a=1", "b=2"})
 	require.NoError(t, err)

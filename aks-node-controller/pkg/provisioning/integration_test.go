@@ -107,7 +107,8 @@ func TestReportReadyWritesReportAndKVP(t *testing.T) {
 	// And persisted to the KVP pool.
 	records, err := provisioningtest.ReadKVPPool(kvpPath)
 	require.NoError(t, err)
-	value, found := provisioningtest.FindKVPValue(records, "PROVISIONING_REPORT")
+	value, found, err := provisioningtest.ReassembleKVPValue(records, "PROVISIONING_REPORT")
+	require.NoError(t, err)
 	require.True(t, found, "PROVISIONING_REPORT record must be present in the KVP pool")
 	assert.Contains(t, value, "result=success")
 	assert.Contains(t, value, "vm_id="+testVMID)

@@ -7,10 +7,9 @@
 // http://168.63.129.16/provisioning/health. Unlike the legacy WALinuxAgent/cloud-init protocol
 // it does not fetch the GoalState or build XML.
 //
-// The package exposes two high-level entry points, ReportReady and ReportFailure, that the
-// aks-node-controller report-ready / report-failure CLI subcommands wrap. Hyper-V KVP
-// persistence of the encoded report and dmesg diagnostics are intentionally out of scope here
-// and are planned as a follow-up.
+// The package exposes ReportReady and ReportFailure for the standalone provisioning-report CLI
+// and future Go callers. Each operation also writes the encoded report and dmesg diagnostics to
+// the Hyper-V KVP pool on a best-effort basis.
 package provisioning
 
 import (
@@ -95,9 +94,8 @@ func (o Options) vmID() string {
 	return getVMID(o.vmIDPath)
 }
 
-// writeKVP writes the encoded report (and dmesg diagnostics) to the Hyper-V KVP pool file. It is
-// best-effort: any failure is logged and swallowed so KVP problems never block the wireserver
-// health report. Matches azure-init's kvp_diagnostics, which is enabled by default.
+// writeKVP writes the encoded report and dmesg diagnostics to the Hyper-V KVP pool. Failures are
+// logged and swallowed so a diagnostic-channel failure never blocks the wireserver report.
 func (o Options) writeKVP(report string) {
 	if o.DisableKVP {
 		return
@@ -114,8 +112,8 @@ func ReportReady(ctx context.Context, opts Options) error {
 	c := opts.client()
 	vmID := opts.vmID()
 
-	// The encoded success report is written to the Hyper-V KVP pool (diagnostics); it is not
-	// part of the Ready HTTP body, matching azure-init.
+	// The encoded success report is written to KVP but is not part of the Ready HTTP body,
+	// matching azure-init.
 	report := NewSuccessReport(opts.agent(), vmID, PpsTypeNone)
 	for _, kv := range opts.SupportingData {
 		report.WithExtra(kv[0], kv[1])

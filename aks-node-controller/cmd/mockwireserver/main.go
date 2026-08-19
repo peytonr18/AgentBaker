@@ -36,7 +36,11 @@ func main() {
 // logReports wraps the recording handler to log each received report as it arrives.
 func logReports(h *provisioningtest.RecordingHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		callsBefore := h.Calls()
 		h.ServeHTTP(w, r)
+		if h.Calls() == callsBefore {
+			return
+		}
 		reports := h.Reports()
 		if len(reports) > 0 {
 			last := reports[len(reports)-1]

@@ -111,6 +111,21 @@ func TestPostHealthNonRetryableBails(t *testing.T) {
 	assert.Equal(t, int32(1), calls.Load(), "400 must not be retried")
 }
 
+func TestPostHealthMalformedEndpointBails(t *testing.T) {
+	c := testClient("://bad endpoint")
+	outcome, err := c.postAttempt(context.Background(), []byte(`{"state":"Ready"}`), time.Second)
+	assert.Equal(t, attemptFatal, outcome)
+	assert.ErrorContains(t, err, "building request")
+}
+
+func TestPostHealthNilClientBails(t *testing.T) {
+	c := testClient("http://127.0.0.1")
+	c.HTTPClient = nil
+	outcome, err := c.postAttempt(context.Background(), []byte(`{"state":"Ready"}`), time.Second)
+	assert.Equal(t, attemptFatal, outcome)
+	assert.ErrorContains(t, err, "HTTP client is nil")
+}
+
 func TestPostHealthContextCancelled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
